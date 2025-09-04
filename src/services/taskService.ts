@@ -13,6 +13,9 @@ export class TaskService {
     this.syncService = syncService ?? new SyncService(db);
   }
 
+  /**
+   * Create a new task (offline-first: saved locally with pending sync)
+   */
   async createTask(taskData: Partial<Task>): Promise<Task> {
     const now = new Date();
     const task: Task = {
@@ -31,8 +34,8 @@ export class TaskService {
     await this.db.run(
       `INSERT INTO tasks (
         id, title, description, completed, created_at, updated_at,
-        is_deleted, sync_status, server_id, last_synced_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        is_deleted, sync_status, server_id, last_synced_at, version
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         task.id,
         task.title,
@@ -44,6 +47,7 @@ export class TaskService {
         task.sync_status,
         task.server_id,
         task.last_synced_at,
+
       ],
     );
 
@@ -53,7 +57,7 @@ export class TaskService {
   }
 
   /**
-   * Update an existing task
+   * Update an existing task (offline-first: mark as pending until synced)
    */
   async updateTask(id: string, updates: Partial<Task>): Promise<Task | null> {
     const existing = await this.getTask(id);
@@ -69,7 +73,7 @@ export class TaskService {
     await this.db.run(
       `UPDATE tasks
        SET title = ?, description = ?, completed = ?, updated_at = ?,
-           is_deleted = ?, sync_status = ?
+           is_deleted = ?, sync_status = ?, version = ?
        WHERE id = ?`,
       [
         updated.title,
@@ -77,37 +81,39 @@ export class TaskService {
         updated.completed ? 1 : 0,
         updated.updated_at.toISOString(),
         updated.is_deleted ? 1 : 0,
-        updated.sync_status
+        updated.sync_status,
+        updated.id,
       ],
     );
 
-    // Add to sync queue
-    await this.syncService?.addToSyncQueue(updated.id, 'update', updated);
+    await this.syncService.addToSyncQueue(updated.id, 'update', updated);
 
     return updated;
   }
 
   /**
-   * Soft delete a task
+   * Soft delete a task (offline-first: mark as deleted locally, sync later)
    */
   async deleteTask(id: string): Promise<boolean> {
     const existing = await this.getTask(id);
     if (!existing) return false;
 
     const updatedAt = new Date();
+    //const newVersion = (existing.version ?? 1) + 1;
 
     await this.db.run(
       `UPDATE tasks
-       SET is_deleted = 1, updated_at = ?, sync_status = 'pending', version = version + 1
+       SET is_deleted = 1, updated_at = ?, sync_status = 'pending', version = ?
        WHERE id = ?`,
       [updatedAt.toISOString(), id],
     );
 
-    // Add to sync queue
-    await this.syncService?.addToSyncQueue(id, 'delete', {
+    await this.syncService.addToSyncQueue(id, 'delete', {
       ...existing,
       is_deleted: true,
       updated_at: updatedAt,
+      sync_status: 'pending',
+
     });
 
     return true;
@@ -117,20 +123,8 @@ export class TaskService {
    * Get a single task by ID
    */
   async getTask(id: string): Promise<Task | null> {
-    const row = await this.db.get<{
-      id: string;
-      title: string;
-      description: string | null;
-      completed: number;
-      created_at: string;
-      updated_at: string;
-      is_deleted: number;
-      sync_status: string;
-      server_id: string | null;
-      last_synced_at: string | null;
-    }>(`SELECT * FROM tasks WHERE id = ?`, [id], true);
+    const row = await this.db.get<any>(`SELECT * FROM tasks WHERE id = ?`, [id], true);
     if (!row || row.is_deleted) return null;
-
     return this.mapRowToTask(row);
   }
   
@@ -139,55 +133,25 @@ export class TaskService {
    * Get all non-deleted tasks
    */
   async getAllTasks(): Promise<Task[]> {
-    const rows = await this.db.all<{
-      id: string;
-      title: string;
-      description: string | null;
-      completed: number;
-      created_at: string;
-      updated_at: string;
-      is_deleted: number;
-      sync_status: string;
-      server_id: string | null;
-      last_synced_at: string | null;
-    }>(`SELECT * FROM tasks WHERE is_deleted = 0`);
+    const rows = await this.db.all<any>(`SELECT * FROM tasks WHERE is_deleted = 0`);
     return rows.map((r) => this.mapRowToTask(r));
   }
 
   /**
-   * Get tasks needing sync
+   * Get tasks needing sync (pending or failed)
    */
   async getTasksNeedingSync(): Promise<Task[]> {
-    const rows = await this.db.all<{
-      id: string;
-      title: string;
-      description: string | null;
-      completed: number;
-      created_at: string;
-      updated_at: string;
-      is_deleted: number;
-      sync_status: string;
-      server_id: string | null;
-      last_synced_at: string | null;
-    }>(`SELECT * FROM tasks WHERE sync_status IN ('pending', 'error')`);
+    const rows = await this.db.all<any>(
+      `SELECT * FROM tasks WHERE sync_status IN ('pending', 'error')`
+    );
     return rows.map((r) => this.mapRowToTask(r));
   }
 
   /**
    * Utility: map raw DB row -> Task object
    */
-  private mapRowToTask(row: {
-    id: string;
-    title: string;
-    description: string | null;
-    completed: number;
-    created_at: string;
-    updated_at: string;
-    is_deleted: number;
-    sync_status: string;
-    server_id: string | null;
-    last_synced_at: string | null;
-  }): Task {
+
+  private mapRowToTask(row: any): Task {
     return {
       id: row.id,
       title: row.title,
@@ -198,9 +162,7 @@ export class TaskService {
       is_deleted: !!row.is_deleted,
       sync_status: row.sync_status as Task['sync_status'],
       server_id: row.server_id || undefined,
-      last_synced_at: row.last_synced_at
-        ? new Date(row.last_synced_at)
-        : undefined,
+      last_synced_at: row.last_synced_at ? new Date(row.last_synced_at) : undefined,
     };
   }
 }
