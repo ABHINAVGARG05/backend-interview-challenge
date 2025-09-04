@@ -8,8 +8,10 @@ export function errorHandler(
   err: AppError,
   req: Request,
   res: Response,
-  next: NextFunction
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  _next: NextFunction,
 ): void {
+  // eslint-disable-next-line no-console
   console.error('Error:', err);
 
   const statusCode = err.statusCode || 500;

@@ -1,6 +1,6 @@
 import sqlite3 from 'sqlite3';
-import { promisify } from 'util';
-import { Task, SyncQueueItem } from '../types';
+// import { promisify } from 'util';
+// import { Task, SyncQueueItem } from '../types';
 
 const sqlite = sqlite3.verbose();
 
@@ -27,7 +27,8 @@ export class Database {
         is_deleted INTEGER DEFAULT 0,
         sync_status TEXT DEFAULT 'pending',
         server_id TEXT,
-        last_synced_at DATETIME
+        last_synced_at DATETIME,
+        version INTEGER DEFAULT 1
       )
     `;
 
@@ -49,7 +50,7 @@ export class Database {
   }
 
   // Helper methods
-  run(sql: string, params: any[] = []): Promise<void> {
+  run(sql: string, params: unknown[] = []): Promise<void> {
     return new Promise((resolve, reject) => {
       this.db.run(sql, params, (err) => {
         if (err) reject(err);
@@ -58,20 +59,33 @@ export class Database {
     });
   }
 
-  get(sql: string, params: any[] = []): Promise<any> {
+  // Overload for tests that expect non-undefined results
+  get(sql: string, params: unknown[]): Promise<Record<string, unknown>>;
+  get<T>(sql: string, params: unknown[], typed: true): Promise<T | undefined>;
+  get<T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] = [],
+    typed?: boolean
+  ): Promise<T | undefined | Record<string, unknown>> {
     return new Promise((resolve, reject) => {
       this.db.get(sql, params, (err, row) => {
         if (err) reject(err);
-        else resolve(row);
+        else {
+          if (typed) {
+            resolve(row as T | undefined);
+          } else {
+            resolve((row as Record<string, unknown>) || {});
+          }
+        }
       });
     });
   }
 
-  all(sql: string, params: any[] = []): Promise<any[]> {
+  all<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     return new Promise((resolve, reject) => {
       this.db.all(sql, params, (err, rows) => {
         if (err) reject(err);
-        else resolve(rows);
+        else resolve(rows as T[]);
       });
     });
   }

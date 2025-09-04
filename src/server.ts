@@ -29,12 +29,15 @@ app.use(errorHandler);
 async function start() {
   try {
     await db.initialize();
+    // eslint-disable-next-line no-console
     console.log('Database initialized');
-    
+
     app.listen(PORT, () => {
+      // eslint-disable-next-line no-console
       console.log(`Server running on port ${PORT}`);
     });
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.error('Failed to start server:', error);
     process.exit(1);
   }
@@ -44,6 +47,7 @@ start();
 
 // Graceful shutdown
 process.on('SIGTERM', async () => {
+  // eslint-disable-next-line no-console
   console.log('SIGTERM received, shutting down gracefully');
   await db.close();
   process.exit(0);
