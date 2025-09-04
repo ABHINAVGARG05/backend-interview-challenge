@@ -133,6 +133,7 @@ export class TaskService {
 
     return this.mapRowToTask(row);
   }
+  
 
   /**
    * Get all non-deleted tasks
