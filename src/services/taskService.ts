@@ -29,7 +29,6 @@ export class TaskService {
       sync_status: 'pending',
       server_id: undefined,
       last_synced_at: undefined,
-      version: 1,
     };
 
     await this.db.run(
@@ -48,7 +47,7 @@ export class TaskService {
         task.sync_status,
         task.server_id,
         task.last_synced_at,
-        task.version,
+
       ],
     );
 
@@ -69,7 +68,6 @@ export class TaskService {
       ...updates,
       updated_at: new Date(),
       sync_status: 'pending',
-      version: (existing.version ?? 1) + 1,
     };
 
     await this.db.run(
@@ -84,7 +82,6 @@ export class TaskService {
         updated.updated_at.toISOString(),
         updated.is_deleted ? 1 : 0,
         updated.sync_status,
-        updated.version,
         updated.id,
       ],
     );
@@ -102,13 +99,13 @@ export class TaskService {
     if (!existing) return false;
 
     const updatedAt = new Date();
-    const newVersion = (existing.version ?? 1) + 1;
+    //const newVersion = (existing.version ?? 1) + 1;
 
     await this.db.run(
       `UPDATE tasks
        SET is_deleted = 1, updated_at = ?, sync_status = 'pending', version = ?
        WHERE id = ?`,
-      [updatedAt.toISOString(), newVersion, id],
+      [updatedAt.toISOString(), id],
     );
 
     await this.syncService.addToSyncQueue(id, 'delete', {
@@ -116,7 +113,7 @@ export class TaskService {
       is_deleted: true,
       updated_at: updatedAt,
       sync_status: 'pending',
-      version: newVersion,
+
     });
 
     return true;
@@ -152,6 +149,7 @@ export class TaskService {
   /**
    * Utility: map raw DB row -> Task object
    */
+
   private mapRowToTask(row: any): Task {
     return {
       id: row.id,
@@ -164,7 +162,6 @@ export class TaskService {
       sync_status: row.sync_status as Task['sync_status'],
       server_id: row.server_id || undefined,
       last_synced_at: row.last_synced_at ? new Date(row.last_synced_at) : undefined,
-      version: row.version ?? 1,
     };
   }
 }
