@@ -9,6 +9,7 @@ export interface Task {
   sync_status?: 'pending' | 'synced' | 'error';
   server_id?: string;
   last_synced_at?: Date;
+  version: number
 }
 
 export interface SyncQueueItem {
